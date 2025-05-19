@@ -1,0 +1,75 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  
+  # 数据库配置
+  datasource:
+    url: jdbc:mysql://localhost:3306/resume_assistant?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    # 请将密码修改为您MySQL的实际密码
+    
+    password: 12345678
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+      pool-name: UserHikariCP
+  
+  # JPA配置
+  jpa:
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  
+  # Redis配置
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+    timeout: 10000
+    lettuce:
+      pool:
+        max-active: 8
+        max-wait: -1
+        max-idle: 8
+        min-idle: 0
+
+# Eureka客户端配置
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}
+
+# 安全配置
+security:
+  jwt:
+    secret: ${JWT_SECRET:resume_assistant_jwt_secret_key_2025}
+    expiration: 86400000 # 24小时
+
+# 微信配置
+wechat:
+  appId: ${WECHAT_APP_ID:your_wechat_app_id}
+  appSecret: ${WECHAT_APP_SECRET:your_wechat_app_secret}
+  redirectUrl: ${WECHAT_REDIRECT_URL:http://localhost:8080/api/v1/auth/wechat/callback}
+
+# 系统配置
+system:
+  dev-mode: true  # 开发模式，生产环境设置为false
+
+# 日志配置
+logging:
+  level:
+    com.resumeassistant: INFO
+    org.springframework.web: INFO
+    org.hibernate: INFO

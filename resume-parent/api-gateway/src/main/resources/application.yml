@@ -1,0 +1,93 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        # 用户服务路由
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/auth/**, /api/v1/users/**
+          filters:
+            - StripPrefix=0
+        
+        # 简历服务路由
+        - id: resume-service
+          uri: lb://resume-service
+          predicates:
+            - Path=/api/v1/resumes/**
+          filters:
+            - StripPrefix=0
+        
+        # AI优化服务路由
+        - id: ai-optimization-service
+          uri: lb://ai-optimization-service
+          predicates:
+            - Path=/api/v1/optimizations/**
+          filters:
+            - StripPrefix=0
+        
+        # 模板服务路由
+        - id: template-service
+          uri: lb://template-service
+          predicates:
+            - Path=/api/v1/templates/**
+          filters:
+            - StripPrefix=0
+        
+        # 投递服务路由
+        - id: delivery-service
+          uri: lb://delivery-service
+          predicates:
+            - Path=/api/v1/deliveries/**
+          filters:
+            - StripPrefix=0
+        
+        # 通知服务路由
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - StripPrefix=0
+  
+  # Redis配置
+  redis:
+    host: localhost
+    port: 6379
+    database: 0
+
+# Eureka客户端配置
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}
+
+# 跨域配置
+spring.cloud.gateway.globalcors:
+  corsConfigurations:
+    '[/**]':
+      allowedOrigins: "*"
+      allowedMethods: "*"
+      allowedHeaders: "*"
+      allowCredentials: true
+
+# 日志配置
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    reactor.netty: INFO
+    org.springframework.web: INFO
