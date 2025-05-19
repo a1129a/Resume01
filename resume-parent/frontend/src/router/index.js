@@ -1,5 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+// 导入用户状态仓库
+import { useUserStore } from '../store/user'
+
 const routes = [
   {
     path: '/',
@@ -13,12 +16,8 @@ const routes = [
     component: () => import('@/views/Login.vue'),
     meta: { requiresAuth: false }
   },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('@/views/Register.vue'),
-    meta: { requiresAuth: false }
-  },
+  // 注册功能已集成到登录页面，用户初次登录时自动注册
+  // 删除独立的注册页面路由
   {
     path: '/dashboard',
     name: 'Dashboard',

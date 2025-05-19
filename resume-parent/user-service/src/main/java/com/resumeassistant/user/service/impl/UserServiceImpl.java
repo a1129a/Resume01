@@ -7,16 +7,21 @@ import com.resumeassistant.user.dto.*;
 import com.resumeassistant.user.entity.User;
 import com.resumeassistant.user.repository.UserRepository;
 import com.resumeassistant.user.service.UserService;
-import lombok.RequiredArgsConstructor;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URLEncoder;
 
 import java.time.LocalDateTime;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -25,7 +30,6 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -111,14 +115,32 @@ public class UserServiceImpl implements UserService {
     /**
      * 生成微信扫码登录二维码
      */
+    @Value("${wechat.app-id}")
+    private String wechatAppId;
+    
+    @Value("${wechat.redirect-url}")
+    private String wechatRedirectUrl;
+    
+    @Value("${wechat.app-secret}")
+    private String wechatAppSecret;
+    
     @Override
     public WechatQrCodeResponse generateWechatQrCode() {
         // 生成唯一状态码
         String state = UUID.randomUUID().toString();
         
-        // 模拟生成微信二维码URL（实际项目中应调用微信API）
+        // 生成微信扫码登录二维码URL
+        String encodedRedirectUrl;
+        try {
+            encodedRedirectUrl = URLEncoder.encode(wechatRedirectUrl, "UTF-8");
+        } catch (Exception e) {
+            log.error("编码回调URL失败", e);
+            throw BusinessException.of(500, "生成微信登录二维码失败");
+        }
+        
         String qrCodeUrl = "https://open.weixin.qq.com/connect/qrconnect?" +
-                "appid=${wechat.appId}&redirect_uri=${wechat.redirectUrl}" +
+                "appid=" + wechatAppId + 
+                "&redirect_uri=" + encodedRedirectUrl + 
                 "&response_type=code&scope=snsapi_login&state=" + state;
         
         // 将状态码存入Redis，设置过期时间
@@ -133,37 +155,163 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
+    private final RestTemplate restTemplate;
+    
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder, 
+                         StringRedisTemplate redisTemplate) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.redisTemplate = redisTemplate;
+        this.restTemplate = new RestTemplate();
+    }
+    
     /**
      * 微信扫码登录回调
      */
     @Override
     @Transactional
     public AuthResponse wechatCallback(String code, String state) {
-        // 验证状态码是否存在于Redis中
+        log.info("微信回调: code={}, state={}", code, state);
+        
+        // 验证state是否存在
         String redisKey = CommonConstants.WECHAT_STATE_PREFIX + state;
-        String redisValue = redisTemplate.opsForValue().get(redisKey);
-        if (redisValue == null) {
-            throw BusinessException.of(400, "二维码已过期或无效");
+        String stateValue = redisTemplate.opsForValue().get(redisKey);
+        if (stateValue == null) {
+            throw BusinessException.of(400, "无效的登录请求");
         }
         
-        // 删除Redis中的状态码
+        // 删除Redis中的state
         redisTemplate.delete(redisKey);
         
-        // 模拟调用微信API获取用户信息（实际项目中应调用微信API）
-        // 这里简化处理，假设已获取到openId和unionId
-        String mockOpenId = "mock_openid_" + UUID.randomUUID().toString().substring(0, 8);
-        String mockUnionId = "mock_unionid_" + UUID.randomUUID().toString().substring(0, 8);
+        try {
+            // 1. 通过code获取access_token
+            String accessTokenUrl = "https://api.weixin.qq.com/sns/oauth2/access_token" + 
+                    "?appid=" + wechatAppId + 
+                    "&secret=" + wechatAppSecret + 
+                    "&code=" + code + 
+                    "&grant_type=authorization_code";
+            
+            WechatAccessTokenResponse tokenResponse = restTemplate.getForObject(
+                    accessTokenUrl, WechatAccessTokenResponse.class);
+            
+            if (tokenResponse == null || tokenResponse.getErrcode() != null) {
+                log.error("获取微信access_token失败: {}", 
+                        tokenResponse != null ? tokenResponse.getErrmsg() : "请求失败");
+                throw BusinessException.of(500, "微信登录失败");
+            }
+            
+            String openId = tokenResponse.getOpenid();
+            String accessToken = tokenResponse.getAccess_token();
+            
+            // 2. 获取用户信息
+            String userInfoUrl = "https://api.weixin.qq.com/sns/userinfo" + 
+                    "?access_token=" + accessToken + 
+                    "&openid=" + openId + 
+                    "&lang=zh_CN";
+            
+            WechatUserInfoResponse userInfoResponse = restTemplate.getForObject(
+                    userInfoUrl, WechatUserInfoResponse.class);
+                    
+            if (userInfoResponse == null || userInfoResponse.getErrcode() != null) {
+                log.error("获取微信用户信息失败: {}", 
+                        userInfoResponse != null ? userInfoResponse.getErrmsg() : "请求失败");
+                throw BusinessException.of(500, "微信登录失败");
+            }
+            
+            // 3. 根据openId查找用户
+            User user = userRepository.findByWechatOpenId(openId).orElse(null);
+            
+            if (user == null) {
+                // 创建新用户
+                user = User.builder()
+                        .username("wx_" + openId.substring(Math.max(0, openId.length() - 8)))
+                        .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                        .wechatOpenId(openId)
+                        .wechatUnionId(userInfoResponse.getUnionid())
+                        .avatarUrl(userInfoResponse.getHeadimgurl())
+                        .nickname(userInfoResponse.getNickname())
+                        .role(CommonConstants.ROLE_USER)
+                        .isEnabled(true)
+                        .createdTime(LocalDateTime.now())
+                        .lastLoginTime(LocalDateTime.now())
+                        .build();
+                userRepository.save(user);
+            } else {
+                // 更新用户信息
+                user.setLastLoginTime(LocalDateTime.now());
+                if (StringUtils.hasText(userInfoResponse.getHeadimgurl())) {
+                    user.setAvatarUrl(userInfoResponse.getHeadimgurl());
+                }
+                if (StringUtils.hasText(userInfoResponse.getNickname())) {
+                    user.setNickname(userInfoResponse.getNickname());
+                }
+                userRepository.save(user);
+            }
+            
+            // 4. 生成JWT token
+            String token = JwtUtil.generateToken(user.getUsername(), user.getId().toString(), user.getRole());
+            
+            // 5. 返回登录成功响应
+            return createAuthResponse(user, token);
+            
+        } catch (Exception e) {
+            log.error("微信登录处理异常", e);
+            throw BusinessException.of(500, "微信登录失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 发送手机验证码
+     */
+    @Override
+    public boolean sendSmsCode(SendSmsCodeRequest request) {
+        String phone = request.getPhone();
+        log.info("发送手机验证码: {}", phone);
         
-        // 查找用户是否存在
-        User user = userRepository.findByWechatOpenId(mockOpenId).orElse(null);
+        // 生成随机6位验证码
+        String code = generateRandomCode(6);
         
+        // 存储到Redis，有效期5分钟
+        String key = "sms:code:" + phone;
+        redisTemplate.opsForValue().set(key, code, 5, TimeUnit.MINUTES);
+        
+        // TODO 调用短信服务发送验证码
+        // 测试环境输出验证码
+        log.info("发送验证码成功: phone={}, code={}", phone, code);
+        
+        return true;
+    }
+    
+    /**
+     * 手机号验证码登录
+     */
+    @Override
+    @Transactional
+    public AuthResponse phoneLogin(PhoneLoginRequest request) {
+        String phone = request.getPhone();
+        String code = request.getVerifyCode();
+        log.info("手机号验证码登录: phone={}", phone);
+        
+        // 验证验证码
+        String key = "sms:code:" + phone;
+        String storedCode = redisTemplate.opsForValue().get(key);
+        
+        if (storedCode == null || !storedCode.equals(code)) {
+            throw BusinessException.of(400, "验证码错误或已失效");
+        }
+        
+        // 验证通过，删除验证码
+        redisTemplate.delete(key);
+        
+        // 判断手机号是否已经注册
+        User user = userRepository.findByPhone(phone).orElse(null);
+        
+        // 新用户，自动注册
         if (user == null) {
-            // 创建新用户
             user = User.builder()
-                    .username("wx_" + mockOpenId.substring(mockOpenId.length() - 8))
+                    .username("mobile_" + phone.substring(phone.length() - 4))
                     .password(passwordEncoder.encode(UUID.randomUUID().toString()))
-                    .wechatOpenId(mockOpenId)
-                    .wechatUnionId(mockUnionId)
+                    .phone(phone)
                     .role(CommonConstants.ROLE_USER)
                     .isEnabled(true)
                     .createdTime(LocalDateTime.now())
@@ -182,7 +330,19 @@ public class UserServiceImpl implements UserService {
         // 构建并返回响应
         return createAuthResponse(user, token);
     }
-
+    
+    /**
+     * 生成随机验证码
+     */
+    private String generateRandomCode(int length) {
+        Random random = new Random();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            sb.append(random.nextInt(10));
+        }
+        return sb.toString();
+    }
+    
     /**
      * 根据用户ID获取用户信息
      */

@@ -3,7 +3,9 @@ package com.resumeassistant.user.controller;
 import com.resumeassistant.common.dto.ApiResponse;
 import com.resumeassistant.user.dto.AuthResponse;
 import com.resumeassistant.user.dto.LoginRequest;
+import com.resumeassistant.user.dto.PhoneLoginRequest;
 import com.resumeassistant.user.dto.RegisterRequest;
+import com.resumeassistant.user.dto.SendSmsCodeRequest;
 import com.resumeassistant.user.dto.WechatQrCodeResponse;
 import com.resumeassistant.user.service.UserService;
 import jakarta.validation.Valid;
@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
     
@@ -58,5 +60,23 @@ public class AuthController {
             @RequestParam("state") String state) {
         log.info("微信登录回调: code={}, state={}", code, state);
         return ApiResponse.success(userService.wechatCallback(code, state));
+    }
+    
+    /**
+     * 发送手机验证码
+     */
+    @PostMapping("/sms/code")
+    public ApiResponse<Boolean> sendSmsCode(@Valid @RequestBody SendSmsCodeRequest request) {
+        log.info("发送手机验证码: {}", request.getPhone());
+        return ApiResponse.success(userService.sendSmsCode(request));
+    }
+    
+    /**
+     * 手机号验证码登录
+     */
+    @PostMapping("/phone/login")
+    public ApiResponse<AuthResponse> phoneLogin(@Valid @RequestBody PhoneLoginRequest request) {
+        log.info("手机号登录: {}", request.getPhone());
+        return ApiResponse.success(userService.phoneLogin(request));
     }
 }

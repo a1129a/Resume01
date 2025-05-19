@@ -59,9 +59,10 @@ security:
 
 # 微信配置
 wechat:
-  appId: ${WECHAT_APP_ID:your_wechat_app_id}
-  appSecret: ${WECHAT_APP_SECRET:your_wechat_app_secret}
-  redirectUrl: ${WECHAT_REDIRECT_URL:http://localhost:8080/api/v1/auth/wechat/callback}
+  app-id: wxc0c75e4db025d4d1
+  app-secret: 0cda25bfc845a21b2fa28a4316e2b712
+  redirect-url: https://1086qf153tg94.vicp.fun/v1/auth/wechat/callback
+  dev-mode: false  # 开发模式下使用模拟微信登录，生产环境设为false
 
 # 系统配置
 system:

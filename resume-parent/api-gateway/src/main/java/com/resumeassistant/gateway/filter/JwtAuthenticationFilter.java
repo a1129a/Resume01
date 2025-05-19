@@ -25,11 +25,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     // 无需token的白名单路径
     private static final List<String> WHITELIST = Arrays.asList(
-            "/api/v1/auth/login",
-            "/api/v1/auth/register",
-            "/api/v1/auth/wechat/qrcode",
-            "/api/v1/auth/wechat/callback",
-            "/api/v1/templates/public"
+            "/v1/auth/login",
+            "/v1/auth/register",
+            "/v1/auth/wechat/qrcode",
+            "/v1/auth/wechat/callback",
+            "/v1/templates/public"
     );
 
     @Override

@@ -2,7 +2,9 @@ package com.resumeassistant.user.service;
 
 import com.resumeassistant.user.dto.AuthResponse;
 import com.resumeassistant.user.dto.LoginRequest;
+import com.resumeassistant.user.dto.PhoneLoginRequest;
 import com.resumeassistant.user.dto.RegisterRequest;
+import com.resumeassistant.user.dto.SendSmsCodeRequest;
 import com.resumeassistant.user.dto.UserDTO;
 import com.resumeassistant.user.dto.WechatQrCodeResponse;
 
@@ -38,6 +40,20 @@ public interface UserService {
      * @return 认证响应，包含token和用户信息
      */
     AuthResponse wechatCallback(String code, String state);
+    
+    /**
+     * 发送手机验证码
+     * @param request 发送验证码请求
+     * @return 是否发送成功
+     */
+    boolean sendSmsCode(SendSmsCodeRequest request);
+    
+    /**
+     * 手机号验证码登录
+     * @param request 手机号登录请求
+     * @return 认证响应，包含token和用户信息
+     */
+    AuthResponse phoneLogin(PhoneLoginRequest request);
     
     /**
      * 根据用户ID获取用户信息

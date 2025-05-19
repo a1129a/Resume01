@@ -48,6 +48,9 @@ public class User {
 
     @Column(name = "real_name")
     private String realName;
+    
+    @Column(name = "nickname")
+    private String nickname;
 
     private String role;
 
