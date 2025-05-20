@@ -51,11 +51,12 @@ public class User {
     
     @Column(name = "nickname")
     private String nickname;
+    
+    @Builder.Default
+    @Column(name = "is_enabled")
+    private Boolean isEnabled = true;
 
     private String role;
-
-    @Column(name = "is_enabled")
-    private Boolean isEnabled;
 
     @CreationTimestamp
     @Column(name = "created_time", updatable = false)

@@ -84,6 +84,12 @@ export const useUserStore = defineStore('user', {
       localStorage.setItem('token', token)
       localStorage.setItem('user', JSON.stringify(user))
     },
+
+    // 开发模式下设置用户信息
+    setUserInfo(user) {
+      this.user = user
+      localStorage.setItem('user', JSON.stringify(user))
+    },
     
     logout() {
       this.token = ''

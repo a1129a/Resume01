@@ -47,8 +47,15 @@ public class AuthController {
      */
     @GetMapping("/wechat/qrcode")
     public ApiResponse<WechatQrCodeResponse> getWechatQrCode() {
-        log.info("获取微信登录二维码");
-        return ApiResponse.success(userService.generateWechatQrCode());
+        log.info("获取微信登录二维码, 请求路径: {}", "/v1/auth/wechat/qrcode");
+        try {
+            WechatQrCodeResponse response = userService.generateWechatQrCode();
+            log.info("微信二维码生成成功: {}", response);
+            return ApiResponse.success(response);
+        } catch (Exception e) {
+            log.error("微信二维码生成失败", e);
+            return ApiResponse.error(500, "获取微信二维码失败: " + e.getMessage());
+        }
     }
     
     /**

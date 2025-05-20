@@ -62,7 +62,7 @@ wechat:
   app-id: wxc0c75e4db025d4d1
   app-secret: 0cda25bfc845a21b2fa28a4316e2b712
   redirect-url: https://1086qf153tg94.vicp.fun/v1/auth/wechat/callback
-  dev-mode: false  # 开发模式下使用模拟微信登录，生产环境设为false
+  dev-mode: true  # 开发模式下使用模拟微信登录，生产环境设为false
 
 # 系统配置
 system:

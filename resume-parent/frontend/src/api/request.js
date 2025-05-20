@@ -13,6 +13,7 @@ service.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`
     }
+    console.log('发送请求:', config.method.toUpperCase(), config.url, config.params || config.data)
     return config
   },
   error => {
@@ -25,9 +26,11 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   response => {
     const res = response.data
+    console.log('响应数据:', response.config.url, res)
     
     // 判断是否是成功的请求
     if (res.code && res.code !== 200) {
+      console.error('响应错误:', response.config.url, res)
       ElMessage.error(res.message || '请求失败')
       
       // 处理特定错误码

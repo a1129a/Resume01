@@ -124,17 +124,46 @@ public class UserServiceImpl implements UserService {
     @Value("${wechat.app-secret}")
     private String wechatAppSecret;
     
+    @Value("${wechat.dev-mode:false}")
+    private boolean wechatDevMode;
+    
     @Override
     public WechatQrCodeResponse generateWechatQrCode() {
+        log.info("开始生成微信二维码, 开发模式={}", wechatDevMode);
+        
         // 生成唯一状态码
         String state = UUID.randomUUID().toString();
+        log.debug("生成状态码: {}", state);
         
-        // 生成微信扫码登录二维码URL
+        // 检查是否在开发模式
+        if (wechatDevMode) {
+            log.info("使用开发模式下的模拟微信二维码");
+            
+            // 将状态码存入Redis，设置过期时间
+            String redisKey = CommonConstants.WECHAT_STATE_PREFIX + state;
+            log.debug("将状态码存入Redis: key={}, value={}, 过期时间={}s", 
+                    redisKey, "pending", CommonConstants.WECHAT_QR_EXPIRE_SECONDS);
+            
+            redisTemplate.opsForValue().set(redisKey, "pending", CommonConstants.WECHAT_QR_EXPIRE_SECONDS, TimeUnit.SECONDS);
+            
+            // 构建并返回模拟响应
+            WechatQrCodeResponse response = WechatQrCodeResponse.builder()
+                    .qrCodeUrl("https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=weixin://wxpay/bizpayurl?dev_mode=true&state=" + state)
+                    .state(state)
+                    .expireTime(System.currentTimeMillis() + CommonConstants.WECHAT_QR_EXPIRE_SECONDS * 1000L)
+                    .build();
+                    
+            log.info("开发模式微信二维码生成完成: {}", response);
+            return response;
+        }
+        
+        // 生产模式下生成微信扫码登录二维码URL
         String encodedRedirectUrl;
         try {
             encodedRedirectUrl = URLEncoder.encode(wechatRedirectUrl, "UTF-8");
+            log.debug("编码后的回调URL: {}", encodedRedirectUrl);
         } catch (Exception e) {
-            log.error("编码回调URL失败", e);
+            log.error("编码回调URL失败, 原始URL: {}", wechatRedirectUrl, e);
             throw BusinessException.of(500, "生成微信登录二维码失败");
         }
         
@@ -143,16 +172,24 @@ public class UserServiceImpl implements UserService {
                 "&redirect_uri=" + encodedRedirectUrl + 
                 "&response_type=code&scope=snsapi_login&state=" + state;
         
+        log.info("生成微信扫码登录URL: {}", qrCodeUrl);
+        
         // 将状态码存入Redis，设置过期时间
         String redisKey = CommonConstants.WECHAT_STATE_PREFIX + state;
+        log.debug("将状态码存入Redis: key={}, value={}, 过期时间={}s", 
+                redisKey, "pending", CommonConstants.WECHAT_QR_EXPIRE_SECONDS);
+        
         redisTemplate.opsForValue().set(redisKey, "pending", CommonConstants.WECHAT_QR_EXPIRE_SECONDS, TimeUnit.SECONDS);
         
         // 构建并返回响应
-        return WechatQrCodeResponse.builder()
+        WechatQrCodeResponse response = WechatQrCodeResponse.builder()
                 .qrCodeUrl(qrCodeUrl)
                 .state(state)
                 .expireTime(System.currentTimeMillis() + CommonConstants.WECHAT_QR_EXPIRE_SECONDS * 1000L)
                 .build();
+                
+        log.info("微信二维码生成完成: {}", response);
+        return response;
     }
 
     private final RestTemplate restTemplate;
@@ -184,6 +221,12 @@ public class UserServiceImpl implements UserService {
         redisTemplate.delete(redisKey);
         
         try {
+            // 开发模式使用模拟数据
+            if (wechatDevMode) {
+                return handleDevModeWechatLogin(code);
+            }
+            
+            // 生产模式使用真实API
             // 1. 通过code获取access_token
             String accessTokenUrl = "https://api.weixin.qq.com/sns/oauth2/access_token" + 
                     "?appid=" + wechatAppId + 
@@ -260,6 +303,47 @@ public class UserServiceImpl implements UserService {
         }
     }
     
+    /**
+     * 开发模式下模拟微信登录
+     * 用于本地测试时不需要真实微信API
+     */
+    private AuthResponse handleDevModeWechatLogin(String code) {
+        log.info("开发模式下模拟微信登录");
+        
+        // 生成模拟的微信openId
+        String openId = "dev_" + UUID.randomUUID().toString().substring(0, 8);
+        
+        // 查询用户是否已存在
+        User user = userRepository.findByWechatOpenId(openId).orElse(null);
+        
+        if (user == null) {
+            // 创建模拟用户
+            user = User.builder()
+                    .username("wx_" + openId.substring(Math.max(0, openId.length() - 8)))
+                    .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .wechatOpenId(openId)
+                    .wechatUnionId("dev_union_id")
+                    .avatarUrl("https://thirdwx.qlogo.cn/mmopen/vi_32/dev_avatar/0")
+                    .nickname("开发测试用户")
+                    .role(CommonConstants.ROLE_USER)
+                    .isEnabled(true)
+                    .createdTime(LocalDateTime.now())
+                    .lastLoginTime(LocalDateTime.now())
+                    .build();
+            userRepository.save(user);
+        } else {
+            // 更新登录时间
+            user.setLastLoginTime(LocalDateTime.now());
+            userRepository.save(user);
+        }
+        
+        // 生成JWT token
+        String token = JwtUtil.generateToken(user.getUsername(), user.getId().toString(), user.getRole());
+        
+        // 返回登录成功响应
+        return createAuthResponse(user, token);
+    }
+
     /**
      * 发送手机验证码
      */
